@@ -9,6 +9,7 @@ import { useChatViewStore } from "@/lib/store";
 import ChatHeader from "@/components/ChatHeader";
 import FilterBar from "@/components/FilterBar";
 import MessageBubble from "@/components/MessageBubble";
+import MediaModal from "@/components/MediaModal";
 
 const BATCH_SIZE = 200;
 
@@ -362,6 +363,9 @@ export default function ChatViewPage() {
           />
         )}
       </div>
+
+      {/* Media gallery modal (overlays everything) */}
+      <MediaModal chatId={chatId} />
     </div>
   );
 }

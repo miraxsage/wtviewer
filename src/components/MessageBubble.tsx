@@ -2,7 +2,8 @@
 
 import { useState, useCallback } from "react";
 import { Message } from "@/lib/types";
-import { toggleFavorite, mediaUrl } from "@/lib/api";
+import { toggleFavorite } from "@/lib/api";
+import MediaThumbnail from "./MediaThumbnail";
 
 interface MessageBubbleProps {
   message: Message;
@@ -29,52 +30,12 @@ function StarIcon({ filled }: { filled: boolean }) {
   );
 }
 
-function PlayIcon() {
-  return (
-    <svg
-      width="36"
-      height="36"
-      viewBox="0 0 24 24"
-      fill="white"
-      stroke="none"
-    >
-      <polygon points="5 3 19 12 5 21 5 3" />
-    </svg>
-  );
-}
-
-function DocumentIcon() {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-      <polyline points="14 2 14 8 20 8" />
-      <line x1="16" y1="13" x2="8" y2="13" />
-      <line x1="16" y1="17" x2="8" y2="17" />
-      <polyline points="10 9 9 9 8 9" />
-    </svg>
-  );
-}
-
 function formatTime(datetime: string): string {
   const d = new Date(datetime);
   return d.toLocaleTimeString("ru-RU", {
     hour: "2-digit",
     minute: "2-digit",
   });
-}
-
-function getFileName(path: string): string {
-  const parts = path.split("/");
-  return parts[parts.length - 1];
 }
 
 export default function MessageBubble({
@@ -103,115 +64,6 @@ export default function MessageBubble({
     },
     [chatId, message.id, isFav, toggling]
   );
-
-  const url = message.media_path ? mediaUrl(chatId, message.media_path) : null;
-
-  const renderMedia = () => {
-    if (!message.media_path && message.media_type === "text") return null;
-    if (!url) return null;
-
-    switch (message.media_type) {
-      case "image":
-        return (
-          <button
-            onClick={onMediaClick}
-            className="block rounded-lg overflow-hidden mt-1 mb-1"
-          >
-            <img
-              src={url}
-              alt=""
-              className="max-w-[300px] w-full rounded-lg"
-              style={{ maxHeight: "400px", objectFit: "cover" }}
-              loading="lazy"
-            />
-          </button>
-        );
-
-      case "video":
-        return (
-          <button
-            onClick={onMediaClick}
-            className="relative block rounded-lg overflow-hidden mt-1 mb-1"
-          >
-            <video
-              src={url}
-              className="max-w-[300px] w-full rounded-lg"
-              style={{ maxHeight: "400px", objectFit: "cover" }}
-              preload="metadata"
-              muted
-            />
-            <div className="absolute inset-0 flex items-center justify-center bg-black/30 rounded-lg">
-              <div
-                className="w-14 h-14 rounded-full flex items-center justify-center"
-                style={{ background: "rgba(0,0,0,0.5)" }}
-              >
-                <PlayIcon />
-              </div>
-            </div>
-          </button>
-        );
-
-      case "sticker":
-        return (
-          <button onClick={onMediaClick} className="block mt-1 mb-1">
-            <img
-              src={url}
-              alt=""
-              className="w-[192px] h-[192px] object-contain"
-              loading="lazy"
-            />
-          </button>
-        );
-
-      case "gif":
-        return (
-          <button
-            onClick={onMediaClick}
-            className="block rounded-lg overflow-hidden mt-1 mb-1"
-          >
-            <img
-              src={url}
-              alt=""
-              className="max-w-[300px] w-full rounded-lg"
-              style={{ maxHeight: "300px", objectFit: "cover" }}
-              loading="lazy"
-            />
-          </button>
-        );
-
-      case "voice":
-      case "audio":
-        return (
-          <div className="mt-1 mb-1">
-            <audio controls preload="none" className="max-w-[260px] w-full h-10">
-              <source src={url} />
-            </audio>
-          </div>
-        );
-
-      case "document":
-        return (
-          <a
-            href={url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-2 mt-1 mb-1 px-3 py-2 rounded-lg transition-colors"
-            style={{
-              background: "rgba(255,255,255,0.06)",
-              color: "var(--text-accent)",
-            }}
-          >
-            <DocumentIcon />
-            <span className="text-sm truncate max-w-[200px]">
-              {getFileName(message.media_path!)}
-            </span>
-          </a>
-        );
-
-      default:
-        return null;
-    }
-  };
 
   if (message.is_hidden === 1) {
     return (
@@ -257,7 +109,11 @@ export default function MessageBubble({
         )}
 
         {/* Media content */}
-        {renderMedia()}
+        <MediaThumbnail
+          message={message}
+          chatId={chatId}
+          onMediaClick={onMediaClick}
+        />
 
         {/* Text content */}
         {message.content && (
