@@ -3,6 +3,7 @@ import { Message } from "../types";
 const MESSAGE_REGEX = /^(\d{2}\.\d{2}\.\d{4}), (\d{2}:\d{2}) - (.+)$/;
 const SENDER_REGEX = /^([^:]+): (.*)$/;
 const FILE_ATTACHED_REGEX = /^\u200e?(.+?) \(файл добавлен\)$/;
+const FILE_INLINE_REGEX = /^\u200e?(.+?) \(файл добавлен\)/;
 
 export function parseWhatsAppChat(text: string): { messages: Message[]; participants: Set<string> } {
   const lines = text.split("\n");
@@ -20,16 +21,30 @@ export function parseWhatsAppChat(text: string): { messages: Message[]; particip
     const [day, month, year] = date.split(".");
     const datetime = `${year}-${month}-${day}T${time}:00`;
 
+    // Check for file attachment — could be entire content or first line of multi-line message
     const fileMatch = content.match(FILE_ATTACHED_REGEX);
     let mediaType: Message["media_type"] = "text";
     let mediaPath: string | null = null;
     let messageContent = content;
 
     if (fileMatch) {
+      // Entire content is just the file reference
       const filename = fileMatch[1];
       mediaPath = filename;
       mediaType = detectMediaType(filename);
       messageContent = "";
+    } else {
+      // Check first line for file reference (multi-line messages with text after attachment)
+      const firstLine = content.split("\n")[0];
+      const inlineMatch = firstLine.match(FILE_INLINE_REGEX);
+      if (inlineMatch) {
+        const filename = inlineMatch[1];
+        mediaPath = filename;
+        mediaType = detectMediaType(filename);
+        // Keep remaining text as content (everything after the first line)
+        const restLines = content.split("\n").slice(1).join("\n").trim();
+        messageContent = restLines;
+      }
     }
 
     messages.push({
