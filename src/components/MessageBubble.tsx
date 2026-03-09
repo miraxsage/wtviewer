@@ -12,6 +12,41 @@ interface MessageBubbleProps {
   showSender: boolean;
   onMediaClick: () => void;
   onBubbleClick?: () => void;
+  searchQuery?: string;
+  tightSpacing?: boolean;
+}
+
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function highlightText(text: string, query: string): React.ReactNode {
+  if (!query) return text;
+  const escaped = escapeRegex(query);
+  let parts: string[];
+  try {
+    parts = text.split(new RegExp(`(${escaped})`, "gi"));
+  } catch {
+    return text;
+  }
+  if (parts.length === 1) return text;
+  return parts.map((part, i) =>
+    part.toLowerCase() === query.toLowerCase() ? (
+      <mark
+        key={i}
+        style={{
+          background: "rgba(245, 197, 66, 0.3)",
+          color: "inherit",
+          borderRadius: "2px",
+          padding: "0 1px",
+        }}
+      >
+        {part}
+      </mark>
+    ) : (
+      part
+    )
+  );
 }
 
 function StarIcon({ filled }: { filled: boolean }) {
@@ -46,6 +81,8 @@ export default function MessageBubble({
   showSender,
   onMediaClick,
   onBubbleClick,
+  searchQuery = "",
+  tightSpacing = false,
 }: MessageBubbleProps) {
   const [isFav, setIsFav] = useState(message.is_favorite === 1);
   const [toggling, setToggling] = useState(false);
@@ -67,10 +104,12 @@ export default function MessageBubble({
     [chatId, message.id, isFav, toggling]
   );
 
+  const spacingClass = tightSpacing ? "py-[1px]" : "py-0.5";
+
   if (message.is_hidden === 1) {
     return (
       <div
-        className={`flex ${isOwnMessage ? "justify-end" : "justify-start"} px-3 py-0.5`}
+        className={`flex ${isOwnMessage ? "justify-end" : "justify-start"} px-3 ${spacingClass}`}
       >
         <div
           className="rounded-xl px-3 py-2 text-xs italic"
@@ -86,9 +125,53 @@ export default function MessageBubble({
     );
   }
 
+  // Sticker: render without bubble background
+  const isSticker =
+    message.media_type === "sticker" && !message.content?.trim();
+
+  if (isSticker) {
+    return (
+      <div
+        className={`flex ${isOwnMessage ? "justify-end" : "justify-start"} px-3 ${spacingClass}`}
+      >
+        <div>
+          {showSender && !isOwnMessage && (
+            <div
+              className="text-xs font-medium mb-0.5"
+              style={{ color: "var(--text-accent)" }}
+            >
+              {message.sender}
+            </div>
+          )}
+          <MediaThumbnail
+            message={message}
+            chatId={chatId}
+            onMediaClick={onMediaClick}
+          />
+          <div className="flex items-center justify-end gap-1.5 mt-0.5">
+            <button
+              onClick={handleToggleFavorite}
+              className="opacity-40 hover:opacity-100 transition-opacity p-0.5"
+              style={{ color: isFav ? "#f5c542" : "var(--text-secondary)" }}
+              title={isFav ? "Remove from favorites" : "Add to favorites"}
+            >
+              <StarIcon filled={isFav} />
+            </button>
+            <span
+              className="text-[11px] leading-none select-none"
+              style={{ color: "rgba(255,255,255,0.45)" }}
+            >
+              {formatTime(message.datetime)}
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
-      className={`flex ${isOwnMessage ? "justify-end" : "justify-start"} px-3 py-0.5`}
+      className={`flex ${isOwnMessage ? "justify-end" : "justify-start"} px-3 ${spacingClass}`}
     >
       <div
         className={`relative rounded-xl px-3 pt-1.5 pb-1 shadow-sm ${onBubbleClick ? "cursor-pointer hover:brightness-110" : ""}`}
@@ -124,7 +207,7 @@ export default function MessageBubble({
             className="text-sm whitespace-pre-wrap break-words"
             style={{ color: "var(--text-primary)" }}
           >
-            {message.content}
+            {highlightText(message.content, searchQuery)}
           </div>
         )}
 

@@ -56,7 +56,7 @@ function isDifferentDay(a: string, b: string): boolean {
 /** Build a flat list interleaving date separators with messages. */
 type RowItem =
   | { type: "date"; date: string }
-  | { type: "message"; message: Message; showSender: boolean };
+  | { type: "message"; message: Message; showSender: boolean; tightSpacing: boolean };
 
 function buildRows(messages: Message[]): RowItem[] {
   const rows: RowItem[] = [];
@@ -64,18 +64,55 @@ function buildRows(messages: Message[]): RowItem[] {
     const msg = messages[i];
     const prev = messages[i - 1];
 
+    const dayChanged = !prev || isDifferentDay(prev.datetime, msg.datetime);
+
     // Insert date separator when date changes
-    if (!prev || isDifferentDay(prev.datetime, msg.datetime)) {
+    if (dayChanged) {
       rows.push({ type: "date", date: msg.datetime });
     }
 
     // Show sender label if first message or sender changed or date changed
     const showSender =
-      !prev || prev.sender !== msg.sender || isDifferentDay(prev.datetime, msg.datetime);
+      !prev || prev.sender !== msg.sender || dayChanged;
 
-    rows.push({ type: "message", message: msg, showSender });
+    // Tight spacing if same sender and no date separator in between
+    const tightSpacing = !!prev && prev.sender === msg.sender && !dayChanged;
+
+    rows.push({ type: "message", message: msg, showSender, tightSpacing });
   }
   return rows;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Scroll-to-bottom button                                            */
+/* ------------------------------------------------------------------ */
+
+function ScrollToBottomButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="absolute bottom-4 right-4 z-10 w-10 h-10 rounded-full flex items-center justify-center shadow-lg transition-all hover:scale-105"
+      style={{
+        background: "var(--bg-secondary)",
+        border: "1px solid var(--border)",
+        color: "var(--text-secondary)",
+      }}
+      title="Scroll to bottom"
+    >
+      <svg
+        width="20"
+        height="20"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <polyline points="6 9 12 15 18 9" />
+      </svg>
+    </button>
+  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -94,6 +131,7 @@ export default function ChatViewPage() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadedRange, setLoadedRange] = useState({ start: 0, end: 0 });
+  const [atBottom, setAtBottom] = useState(true);
 
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const loadingMore = useRef(false);
@@ -302,10 +340,12 @@ export default function ChatViewPage() {
           showSender={row.showSender}
           onMediaClick={() => handleMediaClick(row.message)}
           onBubbleClick={favoritesOnly ? () => navigateToMessage(row.message.order_index) : undefined}
+          searchQuery={searchQuery}
+          tightSpacing={row.tightSpacing}
         />
       );
     },
-    [rows, chatId, ownSender, handleMediaClick, favoritesOnly, navigateToMessage]
+    [rows, chatId, ownSender, handleMediaClick, favoritesOnly, navigateToMessage, searchQuery]
   );
 
   /* ---- loading state ---- */
@@ -346,7 +386,7 @@ export default function ChatViewPage() {
 
       {/* Message area */}
       <div
-        className="flex-1 min-h-0 chat-bg"
+        className="flex-1 min-h-0 chat-bg relative"
         style={{
           backgroundColor: "#0e1621",
           backgroundImage:
@@ -397,6 +437,19 @@ export default function ChatViewPage() {
             atTopThreshold={200}
             atBottomThreshold={200}
             increaseViewportBy={{ top: 600, bottom: 600 }}
+            atBottomStateChange={setAtBottom}
+          />
+        )}
+
+        {/* Scroll to bottom floating button */}
+        {!atBottom && messages.length > 0 && (
+          <ScrollToBottomButton
+            onClick={() =>
+              virtuosoRef.current?.scrollToIndex({
+                index: rows.length - 1,
+                behavior: "smooth",
+              })
+            }
           />
         )}
       </div>
