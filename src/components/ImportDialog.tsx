@@ -125,7 +125,7 @@ export default function ImportDialog({ isOpen, onClose, onSuccess }: ImportDialo
 
     try {
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("archive", file);
       formData.append("name", name.trim());
       if (description.trim()) {
         formData.append("description", description.trim());

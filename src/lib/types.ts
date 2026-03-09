@@ -1,3 +1,9 @@
+export interface ParticipantDetail {
+  displayName?: string;
+  phone?: string;
+  showSender?: boolean;
+}
+
 export interface Chat {
   id: string;
   name: string;
@@ -8,6 +14,8 @@ export interface Chat {
   created_at: string;
   backup_path: string;
   media_dir: string;
+  participant_details: Record<string, ParticipantDetail>;
+  show_own_sender: boolean;
 }
 
 export interface Message {

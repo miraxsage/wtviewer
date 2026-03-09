@@ -123,11 +123,7 @@ export default function MediaThumbnail({
       );
 
     case "voice":
-      return (
-        <div className="mt-1 mb-1">
-          <AudioPlayer src={url} />
-        </div>
-      );
+      return <AudioPlayer src={url} />;
 
     case "audio":
       return (

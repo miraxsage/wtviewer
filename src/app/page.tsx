@@ -1,10 +1,13 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { fetchChats, deleteChat } from "@/lib/api";
 import { Chat } from "@/lib/types";
+import { useChatViewStore } from "@/lib/store";
 import ChatCard from "@/components/ChatCard";
 import ImportDialog from "@/components/ImportDialog";
+import MediaGalleryModal from "@/components/MediaGalleryModal";
 
 function PlusIcon() {
   return (
@@ -24,9 +27,12 @@ function EmptyIcon() {
 }
 
 export default function HomePage() {
+  const router = useRouter();
   const [chats, setChats] = useState<Chat[]>([]);
   const [loading, setLoading] = useState(true);
   const [importOpen, setImportOpen] = useState(false);
+  const [settingsChat, setSettingsChat] = useState<Chat | null>(null);
+  const { openGallery, galleryOpen, setParticipantMap } = useChatViewStore();
 
   const loadChats = useCallback(async () => {
     try {
@@ -50,6 +56,17 @@ export default function HomePage() {
     } catch {
       console.error("Failed to delete chat");
     }
+  }
+
+  // Clear settingsChat when gallery closes
+  useEffect(() => {
+    if (!galleryOpen) setSettingsChat(null);
+  }, [galleryOpen]);
+
+  function handleSettings(chat: Chat) {
+    setSettingsChat(chat);
+    setParticipantMap(chat.participant_details || {});
+    openGallery();
   }
 
   function handleImportSuccess() {
@@ -126,7 +143,7 @@ export default function HomePage() {
           /* Chat Grid */
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {chats.map((chat) => (
-              <ChatCard key={chat.id} chat={chat} onDelete={handleDelete} />
+              <ChatCard key={chat.id} chat={chat} onDelete={handleDelete} onSettings={handleSettings} />
             ))}
           </div>
         )}
@@ -138,6 +155,22 @@ export default function HomePage() {
         onClose={() => setImportOpen(false)}
         onSuccess={handleImportSuccess}
       />
+
+      {/* Settings Gallery Modal */}
+      {settingsChat && (
+        <MediaGalleryModal
+          chatId={settingsChat.id}
+          participants={settingsChat.participants}
+          chatName={settingsChat.name}
+          onChatNameChange={(name) => {
+            setSettingsChat((prev) => prev ? { ...prev, name } : prev);
+            setChats((prev) => prev.map((c) => c.id === settingsChat.id ? { ...c, name } : c));
+          }}
+          onNavigateToMessage={(orderIndex) => {
+            router.push(`/chat/${settingsChat.id}?scrollTo=${orderIndex}`);
+          }}
+        />
+      )}
     </div>
   );
 }

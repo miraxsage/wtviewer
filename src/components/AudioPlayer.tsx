@@ -127,8 +127,7 @@ export default function AudioPlayer({ src }: AudioPlayerProps) {
 
   return (
     <div
-      className="flex items-center gap-2 rounded-lg px-2.5 py-2 min-w-[220px] max-w-[280px]"
-      style={{ background: "rgba(255,255,255,0.06)" }}
+      className="flex items-center gap-2 min-w-[220px] max-w-[280px]"
     >
       {/* Hidden audio element */}
       <audio ref={audioRef} src={src} preload="metadata" />

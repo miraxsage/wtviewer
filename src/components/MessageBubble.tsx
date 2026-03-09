@@ -3,6 +3,7 @@
 import { useState, useCallback } from "react";
 import { Message } from "@/lib/types";
 import { toggleFavorite } from "@/lib/api";
+import { useChatViewStore } from "@/lib/store";
 import MediaThumbnail from "./MediaThumbnail";
 
 interface MessageBubbleProps {
@@ -84,6 +85,8 @@ export default function MessageBubble({
   searchQuery = "",
   tightSpacing = false,
 }: MessageBubbleProps) {
+  const resolveDisplayName = useChatViewStore((s) => s.resolveDisplayName);
+  const isSenderVisible = useChatViewStore((s) => s.isSenderVisible);
   const [isFav, setIsFav] = useState(message.is_favorite === 1);
   const [toggling, setToggling] = useState(false);
 
@@ -112,11 +115,10 @@ export default function MessageBubble({
         className={`flex ${isOwnMessage ? "justify-end" : "justify-start"} px-3 ${spacingClass}`}
       >
         <div
-          className="rounded-xl px-3 py-2 text-xs italic"
+          className="rounded-xl px-3 py-2 text-xs italic max-w-[92%] sm:max-w-[80%] lg:max-w-[45%]"
           style={{
             background: "rgba(255,255,255,0.04)",
             color: "var(--text-secondary)",
-            maxWidth: "70%",
           }}
         >
           Message hidden
@@ -124,6 +126,9 @@ export default function MessageBubble({
       </div>
     );
   }
+
+  const isVoiceOnly =
+    message.media_type === "voice" && !message.content?.trim();
 
   // Sticker: render without bubble background
   const isSticker =
@@ -135,12 +140,12 @@ export default function MessageBubble({
         className={`flex ${isOwnMessage ? "justify-end" : "justify-start"} px-3 ${spacingClass}`}
       >
         <div>
-          {showSender && !isOwnMessage && (
+          {showSender && (isSenderVisible(message.sender) ?? !isOwnMessage) && (
             <div
               className="text-xs font-medium mb-0.5"
               style={{ color: "var(--text-accent)" }}
             >
-              {message.sender}
+              {resolveDisplayName(message.sender)}
             </div>
           )}
           <MediaThumbnail
@@ -174,10 +179,9 @@ export default function MessageBubble({
       className={`flex ${isOwnMessage ? "justify-end" : "justify-start"} px-3 ${spacingClass}`}
     >
       <div
-        className={`relative rounded-xl px-3 pt-1.5 pb-1 shadow-sm ${onBubbleClick ? "cursor-pointer hover:brightness-110" : ""}`}
+        className={`relative rounded-xl shadow-sm max-w-[92%] sm:max-w-[80%] lg:max-w-[45%] ${isVoiceOnly ? "px-2 py-1.5" : "px-3 pt-1.5 pb-1"} ${onBubbleClick ? "cursor-pointer hover:brightness-110" : ""}`}
         style={{
           background: isOwnMessage ? "#2b5278" : "var(--bg-secondary)",
-          maxWidth: "70%",
           minWidth: "80px",
           borderTopRightRadius: isOwnMessage ? "4px" : undefined,
           borderTopLeftRadius: !isOwnMessage ? "4px" : undefined,
@@ -185,12 +189,12 @@ export default function MessageBubble({
         onClick={onBubbleClick}
       >
         {/* Sender name */}
-        {showSender && !isOwnMessage && (
+        {showSender && ((isSenderVisible(message.sender) ?? !isOwnMessage) || isVoiceOnly) && (
           <div
-            className="text-xs font-medium mb-0.5"
+            className={`text-xs font-medium ${isVoiceOnly ? "mb-1.5" : "mb-0.5"}`}
             style={{ color: "var(--text-accent)" }}
           >
-            {message.sender}
+            {resolveDisplayName(message.sender)}
           </div>
         )}
 

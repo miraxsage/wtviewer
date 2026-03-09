@@ -61,7 +61,7 @@ function XIcon() {
 }
 
 export default function FilterBar({ participants }: FilterBarProps) {
-  const { senderFilter, searchQuery, favoritesOnly, setSenderFilter, setSearchQuery, setFavoritesOnly } =
+  const { senderFilter, searchQuery, favoritesOnly, setSenderFilter, setSearchQuery, setFavoritesOnly, resolveDisplayName } =
     useChatViewStore();
 
   const [localSearch, setLocalSearch] = useState(searchQuery);
@@ -109,7 +109,7 @@ export default function FilterBar({ participants }: FilterBarProps) {
                 border: isActive ? "1px solid var(--accent-hover)" : "1px solid transparent",
               }}
             >
-              {p}
+              {resolveDisplayName(p)}
               {isActive && <XIcon />}
             </button>
           );

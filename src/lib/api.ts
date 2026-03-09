@@ -1,4 +1,4 @@
-import { Chat, Message } from "./types";
+import { Chat, Message, ParticipantDetail } from "./types";
 
 export async function fetchChats(): Promise<Chat[]> {
   const res = await fetch("/api/chats");
@@ -7,6 +7,39 @@ export async function fetchChats(): Promise<Chat[]> {
 
 export async function fetchChat(id: string): Promise<Chat> {
   const res = await fetch(`/api/chats/${id}`);
+  return res.json();
+}
+
+export async function updateChatName(chatId: string, name: string): Promise<Chat> {
+  const res = await fetch(`/api/chats/${chatId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  return res.json();
+}
+
+export async function updateParticipantDetails(
+  chatId: string,
+  details: Record<string, ParticipantDetail>
+): Promise<Chat> {
+  const res = await fetch(`/api/chats/${chatId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ participant_details: details }),
+  });
+  return res.json();
+}
+
+export async function updateShowOwnSender(
+  chatId: string,
+  showOwnSender: boolean
+): Promise<Chat> {
+  const res = await fetch(`/api/chats/${chatId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ show_own_sender: showOwnSender }),
+  });
   return res.json();
 }
 
@@ -25,7 +58,7 @@ export async function importChatApi(formData: FormData): Promise<{ chatId: strin
 
 export async function fetchMessages(
   chatId: string,
-  params: { offset?: number; limit?: number; sender?: string; search?: string; favorites?: boolean }
+  params: { offset?: number; limit?: number; sender?: string; search?: string; favorites?: boolean; aroundOrderIndex?: number; mediaType?: string }
 ): Promise<{ messages: Message[]; total: number; offset: number; limit: number }> {
   const url = new URL(`/api/chats/${chatId}/messages`, window.location.origin);
   if (params.offset !== undefined) url.searchParams.set("offset", String(params.offset));
@@ -33,6 +66,8 @@ export async function fetchMessages(
   if (params.sender) url.searchParams.set("sender", params.sender);
   if (params.search) url.searchParams.set("search", params.search);
   if (params.favorites) url.searchParams.set("favorites", "true");
+  if (params.aroundOrderIndex !== undefined) url.searchParams.set("around_order_index", String(params.aroundOrderIndex));
+  if (params.mediaType) url.searchParams.set("media_type", params.mediaType);
   const res = await fetch(url.toString());
   return res.json();
 }

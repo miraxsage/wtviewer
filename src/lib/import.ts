@@ -2,7 +2,6 @@ import fs from "fs";
 import path from "path";
 import { v4 as uuidv4 } from "uuid";
 import JSZip from "jszip";
-import { createExtractorFromData } from "node-unrar-js";
 import { getMainDb, getChatDb } from "./db";
 import { parseWhatsAppChat } from "./parsers/whatsapp";
 import { parseTelegramChat } from "./parsers/telegram";
@@ -129,20 +128,30 @@ async function extractArchive(buffer: Buffer, filename: string, destDir: string)
       fs.writeFileSync(destPath, content);
     }
   } else if (lower.endsWith(".rar")) {
-    const data = Uint8Array.from(buffer).buffer;
-    const extractor = await createExtractorFromData({ data });
-    const extracted = extractor.extract();
-    for (const file of extracted.files) {
-      if (file.fileHeader.flags.directory) {
-        fs.mkdirSync(path.join(destDir, file.fileHeader.name), { recursive: true });
-        continue;
-      }
-      const destPath = path.join(destDir, file.fileHeader.name);
-      fs.mkdirSync(path.dirname(destPath), { recursive: true });
-      if (file.extraction) {
-        fs.writeFileSync(destPath, Buffer.from(file.extraction));
-      }
-    }
+    const tempRar = path.join(destDir, "__archive.rar");
+    fs.writeFileSync(tempRar, buffer);
+    const script = `
+      const fs = require("fs");
+      const path = require("path");
+      const { createExtractorFromData } = require("node-unrar-js");
+      const wasmBinary = fs.readFileSync(require.resolve("node-unrar-js/dist/js/unrar.wasm"));
+      const buf = fs.readFileSync(process.argv[1]);
+      const dest = process.argv[2];
+      (async () => {
+        const extractor = await createExtractorFromData({ wasmBinary: wasmBinary.buffer, data: buf.buffer });
+        const extracted = extractor.extract();
+        for (const f of extracted.files) {
+          if (f.fileHeader.flags.directory) { fs.mkdirSync(path.join(dest, f.fileHeader.name), { recursive: true }); continue; }
+          const dp = path.join(dest, f.fileHeader.name);
+          fs.mkdirSync(path.dirname(dp), { recursive: true });
+          if (f.extraction) fs.writeFileSync(dp, Buffer.from(f.extraction));
+        }
+      })();
+    `;
+    // eslint-disable-next-line no-eval
+    const cp = eval('require("child_process")');
+    cp.execFileSync("node", ["-e", script, tempRar, destDir], { timeout: 60000 });
+    fs.unlinkSync(tempRar);
   } else {
     throw new Error(`Unsupported archive format: ${filename}`);
   }

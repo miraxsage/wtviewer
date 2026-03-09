@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Chat } from "@/lib/types";
+import { useChatViewStore } from "@/lib/store";
 
 interface ChatHeaderProps {
   chat: Chat | null;
@@ -62,6 +63,9 @@ function UsersIcon() {
 }
 
 export default function ChatHeader({ chat }: ChatHeaderProps) {
+  const openGallery = useChatViewStore((s) => s.openGallery);
+  const resolveDisplayName = useChatViewStore((s) => s.resolveDisplayName);
+
   if (!chat) {
     return (
       <header
@@ -104,12 +108,13 @@ export default function ChatHeader({ chat }: ChatHeaderProps) {
       {/* Chat info */}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <h1
-            className="text-base font-semibold truncate"
-            style={{ color: "var(--text-primary)" }}
+          <button
+            onClick={openGallery}
+            className="text-base font-semibold truncate text-left cursor-pointer transition-opacity hover:opacity-80"
+            style={{ color: "var(--text-primary)", background: "none", border: "none", padding: 0 }}
           >
             {chat.name}
-          </h1>
+          </button>
           <span
             className="inline-flex items-center gap-1 shrink-0 rounded-full px-2 py-0.5 text-xs font-medium"
             style={{
@@ -129,9 +134,12 @@ export default function ChatHeader({ chat }: ChatHeaderProps) {
         >
           <UsersIcon />
           <span className="truncate">
-            {chat.participants.length <= 3
-              ? chat.participants.join(", ")
-              : `${chat.participants.slice(0, 3).join(", ")} +${chat.participants.length - 3}`}
+            {(() => {
+              const names = chat.participants.map(resolveDisplayName);
+              return names.length <= 3
+                ? names.join(", ")
+                : `${names.slice(0, 3).join(", ")} +${names.length - 3}`;
+            })()}
           </span>
           <span className="mx-1 opacity-50">|</span>
           <span className="shrink-0">

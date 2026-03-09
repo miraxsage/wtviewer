@@ -79,6 +79,7 @@ export default function MediaModal({ chatId }: MediaModalProps) {
     closeMediaModal,
     nextMedia,
     prevMedia,
+    navigateToMessage,
   } = useChatViewStore();
 
   const backdropRef = useRef<HTMLDivElement>(null);
@@ -214,9 +215,16 @@ export default function MediaModal({ chatId }: MediaModalProps) {
         )}
       </div>
 
-      {/* Bottom info bar */}
+      {/* Bottom info bar — click to navigate to message */}
       <div className="absolute bottom-0 left-0 right-0 flex items-center justify-center px-5 py-4 z-10">
-        <div className="text-center">
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            closeMediaModal();
+            navigateToMessage(current.order_index);
+          }}
+          className="text-center cursor-pointer transition-opacity hover:opacity-80"
+        >
           <div
             className="text-sm font-medium"
             style={{ color: "rgba(255,255,255,0.8)" }}
@@ -229,7 +237,7 @@ export default function MediaModal({ chatId }: MediaModalProps) {
           >
             {formatDate(current.datetime)}
           </div>
-        </div>
+        </button>
       </div>
     </div>
   );

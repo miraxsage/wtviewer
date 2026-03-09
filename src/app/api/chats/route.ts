@@ -6,6 +6,11 @@ export async function GET() {
   const chats = db.prepare("SELECT * FROM chats ORDER BY created_at DESC").all();
   db.close();
   return NextResponse.json(
-    chats.map((c: any) => ({ ...c, participants: JSON.parse(c.participants) }))
+    chats.map((c: any) => ({
+      ...c,
+      participants: JSON.parse(c.participants),
+      participant_details: JSON.parse(c.participant_details || '{}'),
+      show_own_sender: !!c.show_own_sender,
+    }))
   );
 }

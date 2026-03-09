@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { Message } from "./types";
+import { Message, ParticipantDetail } from "./types";
 
 interface ChatViewState {
   senderFilter: string | null;
@@ -9,6 +9,8 @@ interface ChatViewState {
   mediaModalIndex: number;
   mediaMessages: Message[];
   scrollToOrderIndex: number | null;
+  galleryOpen: boolean;
+  participantMap: Record<string, ParticipantDetail>;
 
   setSenderFilter: (sender: string | null) => void;
   setSearchQuery: (query: string) => void;
@@ -19,6 +21,11 @@ interface ChatViewState {
   prevMedia: () => void;
   navigateToMessage: (orderIndex: number) => void;
   clearScrollTarget: () => void;
+  openGallery: () => void;
+  closeGallery: () => void;
+  setParticipantMap: (map: Record<string, ParticipantDetail>) => void;
+  resolveDisplayName: (sender: string) => string;
+  isSenderVisible: (sender: string) => boolean | undefined;
 }
 
 export const useChatViewStore = create<ChatViewState>((set, get) => ({
@@ -29,6 +36,8 @@ export const useChatViewStore = create<ChatViewState>((set, get) => ({
   mediaModalIndex: 0,
   mediaMessages: [],
   scrollToOrderIndex: null,
+  galleryOpen: false,
+  participantMap: {},
 
   setSenderFilter: (sender) => set({ senderFilter: sender }),
   setSearchQuery: (query) => set({ searchQuery: query }),
@@ -52,4 +61,14 @@ export const useChatViewStore = create<ChatViewState>((set, get) => ({
   navigateToMessage: (orderIndex) =>
     set({ favoritesOnly: false, searchQuery: "", senderFilter: null, scrollToOrderIndex: orderIndex }),
   clearScrollTarget: () => set({ scrollToOrderIndex: null }),
+  openGallery: () => set({ galleryOpen: true }),
+  closeGallery: () => set({ galleryOpen: false }),
+  setParticipantMap: (map) => set({ participantMap: map }),
+  resolveDisplayName: (sender) => {
+    const detail = get().participantMap[sender];
+    return detail?.displayName || sender;
+  },
+  isSenderVisible: (sender) => {
+    return get().participantMap[sender]?.showSender;
+  },
 }));
