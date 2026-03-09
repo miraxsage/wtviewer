@@ -3,7 +3,7 @@ import { getMainDb, deleteChatDb } from "@/lib/db";
 import fs from "fs";
 import path from "path";
 
-export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const db = getMainDb();
   const chat = db.prepare("SELECT * FROM chats WHERE id = ?").get(id) as any;
@@ -12,7 +12,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   return NextResponse.json({ ...chat, participants: JSON.parse(chat.participants) });
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const db = getMainDb();
   const chat = db.prepare("SELECT * FROM chats WHERE id = ?").get(id) as any;

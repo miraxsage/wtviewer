@@ -109,7 +109,7 @@ export default function ImportDialog({ isOpen, onClose, onSuccess }: ImportDialo
     }
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!file) {
       setError("Please select a file");
