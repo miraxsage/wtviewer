@@ -86,7 +86,7 @@ export default function ChatViewPage() {
   const params = useParams();
   const chatId = params.id as string;
 
-  const { senderFilter, searchQuery, favoritesOnly, openMediaModal } =
+  const { senderFilter, searchQuery, favoritesOnly, openMediaModal, scrollToOrderIndex, clearScrollTarget, navigateToMessage } =
     useChatViewStore();
 
   const [chat, setChat] = useState<Chat | null>(null);
@@ -232,6 +232,42 @@ export default function ChatViewPage() {
   /* ---- build rows with date separators ---- */
   const rows = buildRows(messages);
 
+  /* ---- scroll to target message after navigateToMessage ---- */
+  useEffect(() => {
+    if (scrollToOrderIndex === null || loading || messages.length === 0) return;
+
+    // Find the message in currently loaded rows
+    const rowIndex = rows.findIndex(
+      (r) => r.type === "message" && r.message.order_index === scrollToOrderIndex
+    );
+
+    if (rowIndex >= 0) {
+      setTimeout(() => {
+        virtuosoRef.current?.scrollToIndex({ index: rowIndex, align: "center", behavior: "smooth" });
+        clearScrollTarget();
+      }, 150);
+    } else {
+      // Message not in current batch — we need to load around it
+      const targetOffset = Math.max(0, scrollToOrderIndex - Math.floor(BATCH_SIZE / 2));
+      fetchMessages(chatId, { offset: targetOffset, limit: BATCH_SIZE }).then((data) => {
+        setMessages(data.messages);
+        setTotal(data.total);
+        setLoadedRange({ start: targetOffset, end: targetOffset + data.messages.length });
+        setTimeout(() => {
+          const newRows = buildRows(data.messages);
+          const idx = newRows.findIndex(
+            (r) => r.type === "message" && r.message.order_index === scrollToOrderIndex
+          );
+          if (idx >= 0) {
+            virtuosoRef.current?.scrollToIndex({ index: idx, align: "center", behavior: "smooth" });
+          }
+          clearScrollTarget();
+        }, 200);
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scrollToOrderIndex]);
+
   /* ---- handle media click ---- */
   const handleMediaClick = useCallback(
     (message: Message) => {
@@ -265,10 +301,11 @@ export default function ChatViewPage() {
           isOwnMessage={ownSender ? row.message.sender === ownSender : false}
           showSender={row.showSender}
           onMediaClick={() => handleMediaClick(row.message)}
+          onBubbleClick={favoritesOnly ? () => navigateToMessage(row.message.order_index) : undefined}
         />
       );
     },
-    [rows, chatId, ownSender, handleMediaClick]
+    [rows, chatId, ownSender, handleMediaClick, favoritesOnly, navigateToMessage]
   );
 
   /* ---- loading state ---- */

@@ -8,6 +8,7 @@ interface ChatViewState {
   mediaModalOpen: boolean;
   mediaModalIndex: number;
   mediaMessages: Message[];
+  scrollToOrderIndex: number | null;
 
   setSenderFilter: (sender: string | null) => void;
   setSearchQuery: (query: string) => void;
@@ -16,6 +17,8 @@ interface ChatViewState {
   closeMediaModal: () => void;
   nextMedia: () => void;
   prevMedia: () => void;
+  navigateToMessage: (orderIndex: number) => void;
+  clearScrollTarget: () => void;
 }
 
 export const useChatViewStore = create<ChatViewState>((set, get) => ({
@@ -25,6 +28,7 @@ export const useChatViewStore = create<ChatViewState>((set, get) => ({
   mediaModalOpen: false,
   mediaModalIndex: 0,
   mediaMessages: [],
+  scrollToOrderIndex: null,
 
   setSenderFilter: (sender) => set({ senderFilter: sender }),
   setSearchQuery: (query) => set({ searchQuery: query }),
@@ -45,4 +49,7 @@ export const useChatViewStore = create<ChatViewState>((set, get) => ({
       set({ mediaModalIndex: mediaModalIndex - 1 });
     }
   },
+  navigateToMessage: (orderIndex) =>
+    set({ favoritesOnly: false, searchQuery: "", senderFilter: null, scrollToOrderIndex: orderIndex }),
+  clearScrollTarget: () => set({ scrollToOrderIndex: null }),
 }));

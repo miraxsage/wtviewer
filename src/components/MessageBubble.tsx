@@ -11,6 +11,7 @@ interface MessageBubbleProps {
   isOwnMessage: boolean;
   showSender: boolean;
   onMediaClick: () => void;
+  onBubbleClick?: () => void;
 }
 
 function StarIcon({ filled }: { filled: boolean }) {
@@ -44,6 +45,7 @@ export default function MessageBubble({
   isOwnMessage,
   showSender,
   onMediaClick,
+  onBubbleClick,
 }: MessageBubbleProps) {
   const [isFav, setIsFav] = useState(message.is_favorite === 1);
   const [toggling, setToggling] = useState(false);
@@ -89,7 +91,7 @@ export default function MessageBubble({
       className={`flex ${isOwnMessage ? "justify-end" : "justify-start"} px-3 py-0.5`}
     >
       <div
-        className="relative rounded-xl px-3 pt-1.5 pb-1 shadow-sm"
+        className={`relative rounded-xl px-3 pt-1.5 pb-1 shadow-sm ${onBubbleClick ? "cursor-pointer hover:brightness-110" : ""}`}
         style={{
           background: isOwnMessage ? "#2b5278" : "var(--bg-secondary)",
           maxWidth: "70%",
@@ -97,6 +99,7 @@ export default function MessageBubble({
           borderTopRightRadius: isOwnMessage ? "4px" : undefined,
           borderTopLeftRadius: !isOwnMessage ? "4px" : undefined,
         }}
+        onClick={onBubbleClick}
       >
         {/* Sender name */}
         {showSender && !isOwnMessage && (
