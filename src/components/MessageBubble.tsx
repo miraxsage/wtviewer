@@ -13,6 +13,8 @@ interface MessageBubbleProps {
   showSender: boolean;
   onMediaClick: () => void;
   onBubbleClick?: () => void;
+  onActivate?: () => void;
+  isActive?: boolean;
   searchQuery?: string;
   tightSpacing?: boolean;
 }
@@ -75,6 +77,8 @@ function formatTime(datetime: string): string {
   });
 }
 
+const activeOutline = "0 0 0 2px rgba(100,180,255,0.3)";
+
 export default function MessageBubble({
   message,
   chatId,
@@ -82,6 +86,8 @@ export default function MessageBubble({
   showSender,
   onMediaClick,
   onBubbleClick,
+  onActivate,
+  isActive = false,
   searchQuery = "",
   tightSpacing = false,
 }: MessageBubbleProps) {
@@ -113,12 +119,14 @@ export default function MessageBubble({
     return (
       <div
         className={`flex ${isOwnMessage ? "justify-end" : "justify-start"} px-3 ${spacingClass}`}
+        onClick={onActivate}
       >
         <div
           className="rounded-xl px-3 py-2 text-xs italic max-w-[92%] sm:max-w-[80%] lg:max-w-[45%]"
           style={{
             background: "rgba(255,255,255,0.04)",
             color: "var(--text-secondary)",
+            boxShadow: isActive ? activeOutline : undefined,
           }}
         >
           Message hidden
@@ -138,8 +146,11 @@ export default function MessageBubble({
     return (
       <div
         className={`flex ${isOwnMessage ? "justify-end" : "justify-start"} px-3 ${spacingClass}`}
+        onClick={onActivate}
       >
-        <div>
+        <div
+          style={{ boxShadow: isActive ? activeOutline : undefined, borderRadius: "12px" }}
+        >
           {showSender && (isSenderVisible(message.sender) ?? !isOwnMessage) && (
             <div
               className="text-xs font-medium mb-0.5"
@@ -177,6 +188,7 @@ export default function MessageBubble({
   return (
     <div
       className={`flex ${isOwnMessage ? "justify-end" : "justify-start"} px-3 ${spacingClass}`}
+      onClick={onActivate}
     >
       <div
         className={`relative rounded-xl shadow-sm max-w-[92%] sm:max-w-[80%] lg:max-w-[45%] ${isVoiceOnly ? "px-2 py-1.5" : "px-3 pt-1.5 pb-1"} ${onBubbleClick ? "cursor-pointer hover:brightness-110" : ""}`}
@@ -185,6 +197,7 @@ export default function MessageBubble({
           minWidth: "80px",
           borderTopRightRadius: isOwnMessage ? "4px" : undefined,
           borderTopLeftRadius: !isOwnMessage ? "4px" : undefined,
+          boxShadow: isActive ? activeOutline : undefined,
         }}
         onClick={onBubbleClick}
       >

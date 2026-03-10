@@ -3,6 +3,7 @@
 import { useEffect, useCallback, useRef } from "react";
 import { useChatViewStore } from "@/lib/store";
 import { mediaUrl } from "@/lib/api";
+import { registerPlaying, unregisterPlaying } from "@/lib/mediaPlayback";
 
 interface MediaModalProps {
   chatId: string;
@@ -88,16 +89,17 @@ export default function MediaModal({ chatId }: MediaModalProps) {
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if (!mediaModalOpen) return;
-      switch (e.key) {
-        case "Escape":
-          closeMediaModal();
-          break;
-        case "ArrowLeft":
-          prevMedia();
-          break;
-        case "ArrowRight":
-          nextMedia();
-          break;
+      if (e.key === "Escape") {
+        closeMediaModal();
+        return;
+      }
+      if (e.key === "ArrowLeft" || e.code === "KeyA") {
+        prevMedia();
+        return;
+      }
+      if (e.key === "ArrowRight" || e.code === "KeyD") {
+        nextMedia();
+        return;
       }
     },
     [mediaModalOpen, closeMediaModal, nextMedia, prevMedia]
@@ -202,6 +204,8 @@ export default function MediaModal({ chatId }: MediaModalProps) {
             autoPlay
             className="max-w-[90vw] max-h-[80vh] rounded-lg"
             style={{ objectFit: "contain" }}
+            onPlay={(e) => registerPlaying(e.currentTarget)}
+            onPause={(e) => unregisterPlaying(e.currentTarget)}
           />
         ) : (
           <img

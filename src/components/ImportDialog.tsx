@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
-import { importChatApi } from "@/lib/api";
+import { useState, useRef, useCallback, useEffect } from "react";
+import { importChatApi, importChatFromFolderApi } from "@/lib/api";
+import { isElectron, selectImportFolder } from "@/lib/electron";
 
 interface ImportDialogProps {
   isOpen: boolean;
@@ -37,17 +38,32 @@ function FileIcon() {
   );
 }
 
+function FolderIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+    </svg>
+  );
+}
+
 export default function ImportDialog({ isOpen, onClose, onSuccess }: ImportDialogProps) {
   const [file, setFile] = useState<File | null>(null);
+  const [folderPath, setFolderPath] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [isElectronApp, setIsElectronApp] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    isElectron().then(setIsElectronApp);
+  }, []);
 
   const resetForm = useCallback(() => {
     setFile(null);
+    setFolderPath(null);
     setName("");
     setDescription("");
     setError(null);
@@ -61,18 +77,25 @@ export default function ImportDialog({ isOpen, onClose, onSuccess }: ImportDialo
     onClose();
   }
 
+  const mouseDownOnBackdrop = useRef(false);
+
+  function handleBackdropMouseDown(e: React.MouseEvent) {
+    mouseDownOnBackdrop.current = e.target === e.currentTarget;
+  }
+
   function handleBackdropClick(e: React.MouseEvent) {
-    if (e.target === e.currentTarget) {
+    if (e.target === e.currentTarget && mouseDownOnBackdrop.current) {
       handleClose();
     }
+    mouseDownOnBackdrop.current = false;
   }
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const selected = e.target.files?.[0];
     if (selected) {
       setFile(selected);
+      setFolderPath(null);
       setError(null);
-      // Auto-fill name from filename if name is empty
       if (!name) {
         const baseName = selected.name.replace(/\.(zip|rar)$/i, "");
         setName(baseName);
@@ -81,6 +104,7 @@ export default function ImportDialog({ isOpen, onClose, onSuccess }: ImportDialo
   }
 
   function handleDragOver(e: React.DragEvent) {
+    if (folderPath) return;
     e.preventDefault();
     setIsDragOver(true);
   }
@@ -93,6 +117,7 @@ export default function ImportDialog({ isOpen, onClose, onSuccess }: ImportDialo
   function handleDrop(e: React.DragEvent) {
     e.preventDefault();
     setIsDragOver(false);
+    if (folderPath) return;
     const droppedFile = e.dataTransfer.files[0];
     if (droppedFile) {
       const ext = droppedFile.name.split(".").pop()?.toLowerCase();
@@ -109,10 +134,33 @@ export default function ImportDialog({ isOpen, onClose, onSuccess }: ImportDialo
     }
   }
 
+  async function handleSelectFolder() {
+    const selected = await selectImportFolder();
+    if (selected) {
+      setFolderPath(selected);
+      setFile(null);
+      setError(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      if (!name) {
+        const folderName = selected.split(/[/\\]/).pop() || "";
+        setName(folderName);
+      }
+    }
+  }
+
+  function clearSource() {
+    setFile(null);
+    setFolderPath(null);
+    setError(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  const hasSource = !!(file || folderPath);
+
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!file) {
-      setError("Please select a file");
+    if (!hasSource) {
+      setError("Please select a file or folder");
       return;
     }
     if (!name.trim()) {
@@ -124,14 +172,17 @@ export default function ImportDialog({ isOpen, onClose, onSuccess }: ImportDialo
     setError(null);
 
     try {
-      const formData = new FormData();
-      formData.append("archive", file);
-      formData.append("name", name.trim());
-      if (description.trim()) {
-        formData.append("description", description.trim());
+      if (folderPath) {
+        await importChatFromFolderApi(folderPath, name.trim(), description.trim());
+      } else {
+        const formData = new FormData();
+        formData.append("archive", file!);
+        formData.append("name", name.trim());
+        if (description.trim()) {
+          formData.append("description", description.trim());
+        }
+        await importChatApi(formData);
       }
-
-      await importChatApi(formData);
       resetForm();
       onSuccess();
       onClose();
@@ -144,9 +195,13 @@ export default function ImportDialog({ isOpen, onClose, onSuccess }: ImportDialo
 
   if (!isOpen) return null;
 
+  const archiveDisabled = !!folderPath;
+  const folderDisabled = !!file;
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+      onMouseDown={handleBackdropMouseDown}
       onClick={handleBackdropClick}
     >
       <div className="w-full max-w-lg rounded-2xl bg-[var(--bg-secondary)] border border-[var(--border)] shadow-2xl shadow-black/40">
@@ -166,18 +221,20 @@ export default function ImportDialog({ isOpen, onClose, onSuccess }: ImportDialo
 
         {/* Body */}
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
-          {/* Drag & Drop Zone */}
+          {/* Archive Drop Zone */}
           <div
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
-            onClick={() => fileInputRef.current?.click()}
-            className={`relative flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed p-8 cursor-pointer transition-all duration-200 ${
-              isDragOver
-                ? "border-[var(--text-accent)] bg-[var(--accent)]/10"
+            onClick={() => !archiveDisabled && fileInputRef.current?.click()}
+            className={`relative flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed p-8 transition-all duration-200 ${
+              archiveDisabled
+                ? "border-[var(--border)] opacity-40 cursor-not-allowed"
+                : isDragOver
+                ? "border-[var(--text-accent)] bg-[var(--accent)]/10 cursor-pointer"
                 : file
-                ? "border-[var(--accent)] bg-[var(--bg-tertiary)]"
-                : "border-[var(--border)] hover:border-[var(--accent)] hover:bg-[var(--bg-tertiary)]"
+                ? "border-[var(--accent)] bg-[var(--bg-tertiary)] cursor-pointer"
+                : "border-[var(--border)] hover:border-[var(--accent)] hover:bg-[var(--bg-tertiary)] cursor-pointer"
             }`}
           >
             <input
@@ -186,6 +243,7 @@ export default function ImportDialog({ isOpen, onClose, onSuccess }: ImportDialo
               accept=".zip,.rar"
               onChange={handleFileChange}
               className="hidden"
+              disabled={archiveDisabled}
             />
 
             {file ? (
@@ -205,8 +263,7 @@ export default function ImportDialog({ isOpen, onClose, onSuccess }: ImportDialo
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    setFile(null);
-                    if (fileInputRef.current) fileInputRef.current.value = "";
+                    clearSource();
                   }}
                   className="text-xs text-[var(--text-secondary)] hover:text-[var(--danger)] transition-colors"
                 >
@@ -230,6 +287,54 @@ export default function ImportDialog({ isOpen, onClose, onSuccess }: ImportDialo
               </>
             )}
           </div>
+
+          {/* Folder selection (Electron only) */}
+          {isElectronApp && (
+            <>
+              <div className="flex items-center gap-3 text-xs text-[var(--text-secondary)]">
+                <div className="flex-1 h-px bg-[var(--border)]" />
+                <span>or</span>
+                <div className="flex-1 h-px bg-[var(--border)]" />
+              </div>
+
+              {folderPath ? (
+                <div className="flex items-center gap-3 rounded-xl border border-[var(--accent)] bg-[var(--bg-tertiary)] px-4 py-3">
+                  <div className="text-[var(--text-accent)]">
+                    <FolderIcon />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-[var(--text-primary)] truncate">
+                      {folderPath.split(/[/\\]/).pop()}
+                    </p>
+                    <p className="text-xs text-[var(--text-secondary)] truncate">
+                      {folderPath}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={clearSource}
+                    className="text-xs text-[var(--text-secondary)] hover:text-[var(--danger)] transition-colors shrink-0"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleSelectFolder}
+                  disabled={folderDisabled || loading}
+                  className={`w-full flex items-center justify-center gap-2 rounded-xl border border-dashed px-4 py-3 text-sm transition-colors ${
+                    folderDisabled
+                      ? "border-[var(--border)] text-[var(--text-secondary)] opacity-40 cursor-not-allowed"
+                      : "border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] cursor-pointer"
+                  }`}
+                >
+                  <FolderIcon />
+                  Select unpacked folder
+                </button>
+              )}
+            </>
+          )}
 
           {/* Name Input */}
           <div>
@@ -289,7 +394,7 @@ export default function ImportDialog({ isOpen, onClose, onSuccess }: ImportDialo
             </button>
             <button
               type="submit"
-              disabled={loading || !file || !name.trim()}
+              disabled={loading || !hasSource || !name.trim()}
               className="px-5 py-2.5 rounded-lg text-sm font-medium bg-[var(--accent)] text-[var(--text-primary)] hover:bg-[var(--accent-hover)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
             >
               {loading ? (

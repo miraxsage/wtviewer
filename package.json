@@ -7,7 +7,9 @@
     "dev": "concurrently --kill-others \"next dev -p 3456\" \"wait-on http://localhost:3456 && electron .\"",
     "build": "next build",
     "build:electron": "tsc -p electron/tsconfig.json",
-    "dist": "npm run build && npm run build:electron && electron-builder",
+    "dist:win": "rm -rf dist-electron .next && npm run build && node scripts/prepare-standalone.js --platform=win32 --arch=x64 && npm run build:electron && electron-builder --win --x64",
+    "dist:mac": "rm -rf dist-electron .next && npm run build && node scripts/prepare-standalone.js && npm run build:electron && electron-builder --mac",
+    "dist:linux": "rm -rf dist-electron .next && npm run build && node scripts/prepare-standalone.js --platform=linux --arch=x64 && npm run build:electron && electron-builder --linux --x64",
     "start": "next start",
     "lint": "eslint"
   },

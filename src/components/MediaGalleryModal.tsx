@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useChatViewStore } from "@/lib/store";
-import { fetchMessages, mediaUrl, updateParticipantDetails, updateChatName } from "@/lib/api";
+import { fetchMessages, mediaUrl } from "@/lib/api";
 import { Message, ParticipantDetail } from "@/lib/types";
 
 const TABS = [
@@ -24,6 +24,7 @@ interface MediaGalleryModalProps {
   participants?: string[];
   chatName?: string;
   onChatNameChange?: (name: string) => void;
+  onParticipantsChange?: (participants: string[]) => void;
   onNavigateToMessage?: (orderIndex: number) => void;
 }
 
@@ -177,7 +178,7 @@ function ListItem({ message, onClick, icon, showFilename }: { message: Message; 
 /*  Main component                                                     */
 /* ------------------------------------------------------------------ */
 
-export default function MediaGalleryModal({ chatId, participants = [], chatName = "", onChatNameChange, onNavigateToMessage }: MediaGalleryModalProps) {
+export default function MediaGalleryModal({ chatId, participants = [], chatName = "", onChatNameChange, onParticipantsChange, onNavigateToMessage }: MediaGalleryModalProps) {
   const { galleryOpen, closeGallery, navigateToMessage, participantMap, setParticipantMap } = useChatViewStore();
 
   const [activeTab, setActiveTab] = useState<TabKey>("general");
@@ -191,6 +192,7 @@ export default function MediaGalleryModal({ chatId, participants = [], chatName 
   // General tab: local editing state
   const [editDetails, setEditDetails] = useState<Record<string, ParticipantDetail>>({});
   const [editName, setEditName] = useState("");
+  const [editParticipants, setEditParticipants] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
 
   // Sync editDetails from store when gallery opens
@@ -198,8 +200,9 @@ export default function MediaGalleryModal({ chatId, participants = [], chatName 
     if (galleryOpen) {
       setEditDetails({ ...participantMap });
       setEditName(chatName);
+      setEditParticipants([...participants]);
     }
-  }, [galleryOpen, participantMap, chatName]);
+  }, [galleryOpen, participantMap, chatName, participants]);
 
   /* ---- Fetch items for current tab ---- */
   const loadItems = useCallback(
@@ -295,6 +298,16 @@ export default function MediaGalleryModal({ chatId, participants = [], chatName 
     }));
   };
 
+  const moveParticipant = (idx: number, dir: -1 | 1) => {
+    setEditParticipants((prev) => {
+      const next = [...prev];
+      const target = idx + dir;
+      if (target < 0 || target >= next.length) return prev;
+      [next[idx], next[target]] = [next[target], next[idx]];
+      return next;
+    });
+  };
+
   const handleSave = async () => {
     setSaving(true);
     try {
@@ -305,13 +318,23 @@ export default function MediaGalleryModal({ chatId, participants = [], chatName 
           cleaned[key] = val;
         }
       }
-      await updateParticipantDetails(chatId, cleaned);
-      setParticipantMap(cleaned);
-      // Save chat name if changed
+      // Build single PATCH body
+      const patch: Record<string, unknown> = { participant_details: cleaned };
       if (editName.trim() && editName !== chatName) {
-        await updateChatName(chatId, editName.trim());
-        onChatNameChange?.(editName.trim());
+        patch.name = editName.trim();
       }
+      const orderChanged = editParticipants.some((p, i) => participants[i] !== p);
+      if (orderChanged) {
+        patch.participants = editParticipants;
+      }
+      await fetch(`/api/chats/${chatId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      setParticipantMap(cleaned);
+      if (patch.name) onChatNameChange?.(patch.name as string);
+      if (orderChanged) onParticipantsChange?.(editParticipants);
       closeGallery();
     } catch {
       console.error("Failed to save");
@@ -417,8 +440,8 @@ export default function MediaGalleryModal({ chatId, participants = [], chatName 
                     />
                   </div>
 
-                  {participants.map((p, idx) => {
-                    const isOwn = participants.length >= 2 && idx === 1;
+                  {editParticipants.map((p, idx) => {
+                    const isOwn = editParticipants.length >= 2 && idx === 1;
                     const defaultShow = !isOwn;
                     const checked = editDetails[p]?.showSender ?? defaultShow;
                     return (
@@ -427,8 +450,38 @@ export default function MediaGalleryModal({ chatId, participants = [], chatName 
                         className="flex flex-col gap-2 rounded-xl p-4"
                         style={{ background: "var(--bg-tertiary)" }}
                       >
-                        <div className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
-                          {p}
+                        <div className="flex items-center justify-between">
+                          <div className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
+                            {p}
+                          </div>
+                          {editParticipants.length > 1 && (
+                            <div className="flex items-center gap-0.5">
+                              <button
+                                type="button"
+                                disabled={idx === 0}
+                                onClick={() => moveParticipant(idx, -1)}
+                                className="p-1 rounded transition-colors disabled:opacity-20"
+                                style={{ color: "var(--text-secondary)" }}
+                                onMouseEnter={(e) => { if (idx !== 0) e.currentTarget.style.color = "var(--text-primary)"; }}
+                                onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-secondary)"; }}
+                                title="Move up (left in chat)"
+                              >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15" /></svg>
+                              </button>
+                              <button
+                                type="button"
+                                disabled={idx === editParticipants.length - 1}
+                                onClick={() => moveParticipant(idx, 1)}
+                                className="p-1 rounded transition-colors disabled:opacity-20"
+                                style={{ color: "var(--text-secondary)" }}
+                                onMouseEnter={(e) => { if (idx !== editParticipants.length - 1) e.currentTarget.style.color = "var(--text-primary)"; }}
+                                onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-secondary)"; }}
+                                title="Move down (right in chat)"
+                              >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
+                              </button>
+                            </div>
+                          )}
                         </div>
                         <div className="flex gap-2">
                           <input

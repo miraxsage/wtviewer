@@ -6,6 +6,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import { fetchChat, fetchMessages } from "@/lib/api";
 import { Chat, Message } from "@/lib/types";
 import { useChatViewStore } from "@/lib/store";
+import { getCurrent, registerPlaying } from "@/lib/mediaPlayback";
 import ChatHeader from "@/components/ChatHeader";
 import FilterBar from "@/components/FilterBar";
 import MessageBubble from "@/components/MessageBubble";
@@ -161,6 +162,7 @@ export default function ChatViewPage() {
   const loadGeneration = useRef(0);
   const [stickyDate, setStickyDate] = useState<string | null>(null);
   const [stickyOffset, setStickyOffset] = useState(0);
+  const [activeOrderIndex, setActiveOrderIndex] = useState<number | null>(null);
 
   /* ---- load chat info ---- */
   useEffect(() => {
@@ -217,27 +219,58 @@ export default function ChatViewPage() {
         return;
       }
 
-      // If filters are active, start from beginning; otherwise from end
-      const startOffset = hasFilters
-        ? 0
-        : Math.max(0, t - BATCH_SIZE);
+      const anchorOI = activeRef.current;
 
-      const data = await fetchMessages(chatId, {
-        offset: startOffset,
-        limit: BATCH_SIZE,
-        sender: senderFilter || undefined,
-        search: searchQuery || undefined,
-        favorites: favoritesOnly || undefined,
-      });
+      const data = anchorOI != null
+        ? await fetchMessages(chatId, {
+            limit: BATCH_SIZE,
+            sender: senderFilter || undefined,
+            search: searchQuery || undefined,
+            favorites: favoritesOnly || undefined,
+            aroundOrderIndex: anchorOI,
+          })
+        : await fetchMessages(chatId, {
+            offset: hasFilters ? 0 : Math.max(0, t - BATCH_SIZE),
+            limit: BATCH_SIZE,
+            sender: senderFilter || undefined,
+            search: searchQuery || undefined,
+            favorites: favoritesOnly || undefined,
+          });
 
       if (gen !== loadGeneration.current) return;
 
       setMessages(data.messages);
       setFirstItemIndex(FIRST_INDEX);
       setLoadedRange({
-        start: startOffset,
-        end: startOffset + data.messages.length,
+        start: data.offset,
+        end: data.offset + data.messages.length,
       });
+
+      // Scroll to active message (or nearest) after filter change
+      if (anchorOI != null && data.messages.length > 0) {
+        const newRows = buildRows(data.messages);
+        let targetOI = anchorOI;
+
+        if (!data.messages.some((m) => m.order_index === targetOI)) {
+          // Active message filtered out — find nearest
+          let nearest = data.messages[0];
+          let minDist = Math.abs(nearest.order_index - targetOI);
+          for (const m of data.messages) {
+            const d = Math.abs(m.order_index - targetOI);
+            if (d < minDist) { nearest = m; minDist = d; }
+          }
+          targetOI = nearest.order_index;
+          setActiveOrderIndex(targetOI);
+        }
+
+        const rowIdx = newRows.findIndex(
+          (r) => r.type === "message" && r.message.order_index === targetOI
+        );
+        if (rowIdx >= 0) {
+          pendingInitialIndex.current = rowIdx;
+          setVirtuosoKey((k) => k + 1);
+        }
+      }
     } catch {
       console.error("Failed to load messages");
     } finally {
@@ -347,6 +380,7 @@ export default function ChatViewPage() {
       );
       pendingInitialIndex.current = Math.max(0, idx);
       setVirtuosoKey((k) => k + 1);
+      setActiveOrderIndex(target);
       setLoading(false);
       clearScrollTarget();
     });
@@ -369,6 +403,128 @@ export default function ChatViewPage() {
     [messages, openMediaModal]
   );
 
+  /* ---- keyboard navigation ---- */
+  const activeRef = useRef<number | null>(null);
+  activeRef.current = activeOrderIndex;
+
+  const scrollToRow = useCallback(
+    (orderIndex: number) => {
+      // Try DOM-based scroll first (works reliably for items in overscan)
+      const el = document.querySelector(`[data-order-index="${orderIndex}"]`);
+      if (el) {
+        el.scrollIntoView({ block: "nearest", behavior: "auto" });
+        return;
+      }
+      // Fallback to Virtuoso's scrollToIndex for items not yet rendered
+      const idx = rowsRef.current.findIndex(
+        (r) => r.type === "message" && r.message.order_index === orderIndex
+      );
+      if (idx >= 0) {
+        virtuosoRef.current?.scrollToIndex({
+          index: firstItemIndexRef.current + idx,
+          align: "center",
+          behavior: "auto",
+        });
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      // Ignore when typing in inputs
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+
+      const { mediaModalOpen, galleryOpen } = useChatViewStore.getState();
+      if (galleryOpen) return;
+
+      // Use event.code for layout-independent keys (works with any keyboard layout)
+      const code = e.code;
+      const shift = e.shiftKey;
+
+      // W/S — navigate messages (only when no modal)
+      if (!mediaModalOpen && (code === "KeyW" || code === "KeyS")) {
+        e.preventDefault();
+        const msgs = messagesRef.current;
+        if (msgs.length === 0) return;
+
+        const curIdx = activeRef.current != null
+          ? msgs.findIndex((m) => m.order_index === activeRef.current)
+          : -1;
+
+        let nextIdx: number;
+        if (code === "KeyS") {
+          nextIdx = curIdx < 0 ? 0 : Math.min(curIdx + 1, msgs.length - 1);
+        } else {
+          nextIdx = curIdx < 0 ? msgs.length - 1 : Math.max(curIdx - 1, 0);
+        }
+
+        const target = msgs[nextIdx].order_index;
+        setActiveOrderIndex(target);
+        scrollToRow(target);
+        return;
+      }
+
+      // Space when media modal is open — close and navigate to current media's message
+      if (mediaModalOpen && code === "Space") {
+        e.preventDefault();
+        const { mediaMessages, mediaModalIndex, closeMediaModal: closeMM, navigateToMessage: navTo } = useChatViewStore.getState();
+        const msg = mediaMessages[mediaModalIndex];
+        if (msg) {
+          closeMM();
+          navTo(msg.order_index);
+        }
+        return;
+      }
+
+      // Space — play/pause audio or open media (only when no modal)
+      if (!mediaModalOpen && code === "Space") {
+        e.preventDefault();
+        const active = activeRef.current;
+        if (active == null) return;
+        const msg = messagesRef.current.find((m) => m.order_index === active);
+        if (!msg) return;
+
+        if (msg.media_type === "voice" || msg.media_type === "audio") {
+          // Find the audio element in the active message DOM
+          const el = document.querySelector<HTMLAudioElement>(
+            `[data-order-index="${active}"] audio`
+          );
+          if (el) {
+            if (el.paused) {
+              registerPlaying(el);
+              el.play();
+            } else {
+              el.pause();
+            }
+          }
+        } else if (
+          msg.media_path &&
+          (msg.media_type === "image" || msg.media_type === "video" || msg.media_type === "gif")
+        ) {
+          handleMediaClick(msg);
+        }
+        return;
+      }
+
+      // A/D — seek audio (works even during playback, no modal check needed, but not when modal open)
+      if (!mediaModalOpen && (code === "KeyA" || code === "KeyD")) {
+        const el = getCurrent();
+        if (!el) return;
+        if (code === "KeyA") {
+          el.currentTime = shift ? 0 : Math.max(0, el.currentTime - 5);
+        } else {
+          el.currentTime = shift ? el.duration : Math.min(el.duration, el.currentTime + 5);
+        }
+        return;
+      }
+    };
+
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [scrollToRow, handleMediaClick]);
+
   /* ---- render a single row ---- */
   const renderRow = useCallback(
     (index: number) => {
@@ -379,20 +535,25 @@ export default function ChatViewPage() {
         return <DateSeparator date={row.date} />;
       }
 
+      const oi = row.message.order_index;
       return (
-        <MessageBubble
-          message={row.message}
-          chatId={chatId}
-          isOwnMessage={ownSender ? row.message.sender === ownSender : false}
-          showSender={row.showSender}
-          onMediaClick={() => handleMediaClick(row.message)}
-          onBubbleClick={favoritesOnly || searchQuery ? () => navigateToMessage(row.message.order_index) : undefined}
-          searchQuery={searchQuery}
-          tightSpacing={row.tightSpacing}
-        />
+        <div data-order-index={oi}>
+          <MessageBubble
+            message={row.message}
+            chatId={chatId}
+            isOwnMessage={ownSender ? row.message.sender === ownSender : false}
+            showSender={row.showSender}
+            onMediaClick={() => handleMediaClick(row.message)}
+            onBubbleClick={favoritesOnly || searchQuery ? () => navigateToMessage(row.message.order_index) : undefined}
+            onActivate={() => setActiveOrderIndex(oi)}
+            isActive={activeOrderIndex === oi}
+            searchQuery={searchQuery}
+            tightSpacing={row.tightSpacing}
+          />
+        </div>
       );
     },
-    [rows, firstItemIndex, chatId, ownSender, handleMediaClick, favoritesOnly, navigateToMessage, searchQuery]
+    [rows, firstItemIndex, chatId, ownSender, handleMediaClick, favoritesOnly, navigateToMessage, searchQuery, activeOrderIndex]
   );
 
   /* ---- track sticky date ---- */
@@ -691,6 +852,7 @@ export default function ChatViewPage() {
         participants={chat?.participants}
         chatName={chat?.name}
         onChatNameChange={(name) => setChat((prev) => prev ? { ...prev, name } : prev)}
+        onParticipantsChange={(p) => setChat((prev) => prev ? { ...prev, participants: p } : prev)}
       />
     </div>
   );

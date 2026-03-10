@@ -33,6 +33,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     return NextResponse.json({ error: "Chat not found" }, { status: 404 });
   }
 
+  if (body.participants !== undefined) {
+    db.prepare("UPDATE chats SET participants = ? WHERE id = ?")
+      .run(JSON.stringify(body.participants), id);
+  }
   if (body.participant_details !== undefined) {
     db.prepare("UPDATE chats SET participant_details = ? WHERE id = ?")
       .run(JSON.stringify(body.participant_details), id);

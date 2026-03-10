@@ -14,6 +14,77 @@ interface ImportResult {
   messageCount: number;
 }
 
+function parseAndStore(
+  contentDir: string,
+  chatId: string,
+  name: string,
+  description: string,
+  mediaDir: string,
+  backupPath: string
+): ImportResult {
+  const isWhatsApp = detectWhatsApp(contentDir);
+  let messages: Message[];
+  let participants: Set<string>;
+
+  if (isWhatsApp) {
+    const txtFile = fs.readdirSync(contentDir).find((f) => f.endsWith(".txt"));
+    if (!txtFile) throw new Error("WhatsApp text file not found");
+    const text = fs.readFileSync(path.join(contentDir, txtFile), "utf-8");
+    const result = parseWhatsAppChat(text);
+    messages = result.messages;
+    participants = result.participants;
+  } else {
+    const htmlFiles = fs
+      .readdirSync(contentDir)
+      .filter((f) => f.match(/^messages\d*\.html$/))
+      .map((f) => ({
+        name: f,
+        content: fs.readFileSync(path.join(contentDir, f), "utf-8"),
+      }));
+    if (htmlFiles.length === 0) throw new Error("Telegram HTML files not found");
+    const result = parseTelegramChat(htmlFiles);
+    messages = result.messages;
+    participants = result.participants;
+  }
+
+  processMediaFiles(messages, contentDir, mediaDir);
+
+  const chatDb = getChatDb(chatId);
+  const insert = chatDb.prepare(`
+    INSERT INTO messages (order_index, sender, datetime, content, media_type, media_path, is_favorite, is_hidden)
+    VALUES (?, ?, ?, ?, ?, ?, 0, 0)
+  `);
+
+  const batchInsert = chatDb.transaction((msgs: Message[]) => {
+    for (const msg of msgs) {
+      insert.run(msg.order_index, msg.sender, msg.datetime, msg.content, msg.media_type, msg.media_path);
+    }
+  });
+  batchInsert(messages);
+  chatDb.close();
+
+  const mainDb = getMainDb();
+  mainDb
+    .prepare(
+      `INSERT INTO chats (id, name, description, source_type, participants, message_count, created_at, backup_path, media_dir)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .run(
+      chatId,
+      name,
+      description,
+      isWhatsApp ? "whatsapp" : "telegram",
+      JSON.stringify([...participants]),
+      messages.length,
+      new Date().toISOString(),
+      backupPath,
+      mediaDir
+    );
+  mainDb.close();
+
+  return { chatId, name, messageCount: messages.length };
+}
+
 export async function importChat(
   archiveBuffer: Buffer,
   archiveFileName: string,
@@ -30,86 +101,34 @@ export async function importChat(
   fs.mkdirSync(mediaDir, { recursive: true });
   fs.mkdirSync(tempDir, { recursive: true });
 
-  // Save backup
   const backupPath = path.join(backupDir, `${chatId}_${archiveFileName}`);
   fs.writeFileSync(backupPath, archiveBuffer);
 
   try {
-    // Extract archive
     await extractArchive(archiveBuffer, archiveFileName, tempDir);
-
-    // Find the actual content directory (might be nested)
     const contentDir = findContentDir(tempDir);
-
-    // Detect type and parse
-    const isWhatsApp = detectWhatsApp(contentDir);
-    let messages: Message[];
-    let participants: Set<string>;
-
-    if (isWhatsApp) {
-      const txtFile = fs.readdirSync(contentDir).find((f) => f.endsWith(".txt"));
-      if (!txtFile) throw new Error("WhatsApp text file not found");
-      const text = fs.readFileSync(path.join(contentDir, txtFile), "utf-8");
-      const result = parseWhatsAppChat(text);
-      messages = result.messages;
-      participants = result.participants;
-    } else {
-      const htmlFiles = fs
-        .readdirSync(contentDir)
-        .filter((f) => f.match(/^messages\d*\.html$/))
-        .map((f) => ({
-          name: f,
-          content: fs.readFileSync(path.join(contentDir, f), "utf-8"),
-        }));
-      if (htmlFiles.length === 0) throw new Error("Telegram HTML files not found");
-      const result = parseTelegramChat(htmlFiles);
-      messages = result.messages;
-      participants = result.participants;
-    }
-
-    // Process media files and copy to organized dirs
-    processMediaFiles(messages, contentDir, mediaDir);
-
-    // Write messages to chat DB
-    const chatDb = getChatDb(chatId);
-    const insert = chatDb.prepare(`
-      INSERT INTO messages (order_index, sender, datetime, content, media_type, media_path, is_favorite, is_hidden)
-      VALUES (?, ?, ?, ?, ?, ?, 0, 0)
-    `);
-
-    const batchInsert = chatDb.transaction((msgs: Message[]) => {
-      for (const msg of msgs) {
-        insert.run(msg.order_index, msg.sender, msg.datetime, msg.content, msg.media_type, msg.media_path);
-      }
-    });
-    batchInsert(messages);
-    chatDb.close();
-
-    // Register chat in main DB
-    const mainDb = getMainDb();
-    mainDb
-      .prepare(
-        `INSERT INTO chats (id, name, description, source_type, participants, message_count, created_at, backup_path, media_dir)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      )
-      .run(
-        chatId,
-        name,
-        description,
-        isWhatsApp ? "whatsapp" : "telegram",
-        JSON.stringify([...participants]),
-        messages.length,
-        new Date().toISOString(),
-        backupPath,
-        mediaDir
-      );
-    mainDb.close();
-
-    return { chatId, name, messageCount: messages.length };
+    return parseAndStore(contentDir, chatId, name, description, mediaDir, backupPath);
   } finally {
-    // Clean up temp directory
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
+}
+
+export function importChatFromFolder(
+  folderPath: string,
+  name: string,
+  description: string
+): ImportResult {
+  if (!fs.existsSync(folderPath) || !fs.statSync(folderPath).isDirectory()) {
+    throw new Error("Selected path is not a valid directory");
+  }
+
+  const chatId = uuidv4();
+  const dataDir = getDataDir();
+  const mediaDir = path.join(dataDir, "media", chatId);
+  fs.mkdirSync(mediaDir, { recursive: true });
+
+  const contentDir = findContentDir(folderPath);
+  return parseAndStore(contentDir, chatId, name, description, mediaDir, "");
 }
 
 async function extractArchive(buffer: Buffer, filename: string, destDir: string) {
@@ -148,9 +167,11 @@ async function extractArchive(buffer: Buffer, filename: string, destDir: string)
         }
       })();
     `;
-    // eslint-disable-next-line no-eval
-    const cp = eval('require("child_process")');
-    cp.execFileSync("node", ["-e", script, tempRar, destDir], { timeout: 60000 });
+    const cp = eval('require("child_process")') as typeof import("child_process");
+    cp.execFileSync(process.execPath, ["-e", script, tempRar, destDir], {
+      timeout: 60000,
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+    });
     fs.unlinkSync(tempRar);
   } else {
     throw new Error(`Unsupported archive format: ${filename}`);

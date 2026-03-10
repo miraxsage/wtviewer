@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, useEffect, useCallback } from "react";
+import { registerPlaying, unregisterPlaying } from "@/lib/mediaPlayback";
 
 interface AudioPlayerProps {
   src: string;
@@ -62,7 +63,7 @@ export default function AudioPlayer({ src }: AudioPlayerProps) {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
 
-  const bars = useRef(generateBars(src, BAR_COUNT)).current;
+  const [bars] = useState(() => generateBars(src, BAR_COUNT));
 
   const progress = duration > 0 ? currentTime / duration : 0;
 
@@ -77,18 +78,23 @@ export default function AudioPlayer({ src }: AudioPlayerProps) {
     const onEnded = () => {
       setPlaying(false);
       setCurrentTime(0);
+      unregisterPlaying(audio);
     };
+    const onPause = () => setPlaying(false);
 
     audio.addEventListener("timeupdate", onTimeUpdate);
     audio.addEventListener("durationchange", onDurationChange);
     audio.addEventListener("loadedmetadata", onLoadedMetadata);
     audio.addEventListener("ended", onEnded);
+    audio.addEventListener("pause", onPause);
 
     return () => {
       audio.removeEventListener("timeupdate", onTimeUpdate);
       audio.removeEventListener("durationchange", onDurationChange);
       audio.removeEventListener("loadedmetadata", onLoadedMetadata);
       audio.removeEventListener("ended", onEnded);
+      audio.removeEventListener("pause", onPause);
+      unregisterPlaying(audio);
     };
   }, []);
 
@@ -101,6 +107,7 @@ export default function AudioPlayer({ src }: AudioPlayerProps) {
       setPlaying(false);
     } else {
       try {
+        registerPlaying(audio);
         await audio.play();
         setPlaying(true);
       } catch {

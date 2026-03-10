@@ -56,6 +56,23 @@ export async function importChatApi(formData: FormData): Promise<{ chatId: strin
   return res.json();
 }
 
+export async function importChatFromFolderApi(
+  folderPath: string,
+  name: string,
+  description: string
+): Promise<{ chatId: string; name: string; messageCount: number }> {
+  const res = await fetch("/api/chats/import", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ folderPath, name, description }),
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error || "Import failed");
+  }
+  return res.json();
+}
+
 export async function fetchMessages(
   chatId: string,
   params: { offset?: number; limit?: number; sender?: string; search?: string; favorites?: boolean; aroundOrderIndex?: number; mediaType?: string }
