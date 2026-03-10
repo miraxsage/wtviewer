@@ -6,8 +6,7 @@ import { getMainDb, getChatDb } from "./db";
 import { parseWhatsAppChat } from "./parsers/whatsapp";
 import { parseTelegramChat } from "./parsers/telegram";
 import { Message } from "./types";
-
-const DATA_DIR = path.join(process.cwd(), "data");
+import { getDataDir } from "./dataPath";
 
 interface ImportResult {
   chatId: string;
@@ -22,9 +21,10 @@ export async function importChat(
   description: string
 ): Promise<ImportResult> {
   const chatId = uuidv4();
-  const backupDir = path.join(DATA_DIR, "backups");
-  const mediaDir = path.join(DATA_DIR, "media", chatId);
-  const tempDir = path.join(DATA_DIR, "temp", chatId);
+  const dataDir = getDataDir();
+  const backupDir = path.join(dataDir, "backups");
+  const mediaDir = path.join(dataDir, "media", chatId);
+  const tempDir = path.join(dataDir, "temp", chatId);
 
   fs.mkdirSync(backupDir, { recursive: true });
   fs.mkdirSync(mediaDir, { recursive: true });

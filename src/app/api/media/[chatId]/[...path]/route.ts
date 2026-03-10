@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
+import { getDataDir } from "@/lib/dataPath";
 
 const MIME_TYPES: Record<string, string> = {
   ".jpg": "image/jpeg",
@@ -23,7 +24,7 @@ export async function GET(
   { params }: { params: Promise<{ chatId: string; path: string[] }> }
 ) {
   const { chatId, path: pathParts } = await params;
-  const filePath = path.join(process.cwd(), "data", "media", chatId, ...pathParts);
+  const filePath = path.join(getDataDir(), "media", chatId, ...pathParts);
 
   if (!fs.existsSync(filePath)) {
     return NextResponse.json({ error: "File not found" }, { status: 404 });

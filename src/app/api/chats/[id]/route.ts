@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMainDb, deleteChatDb } from "@/lib/db";
 import fs from "fs";
 import path from "path";
+import { getDataDir } from "@/lib/dataPath";
 
 function serializeChat(row: any) {
   return {
@@ -63,7 +64,7 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
 
   deleteChatDb(id);
 
-  const mediaDir = path.join(process.cwd(), "data", "media", id);
+  const mediaDir = path.join(getDataDir(), "media", id);
   if (fs.existsSync(mediaDir)) {
     fs.rmSync(mediaDir, { recursive: true, force: true });
   }

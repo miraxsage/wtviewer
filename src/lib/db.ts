@@ -1,19 +1,17 @@
 import Database from "better-sqlite3";
 import path from "path";
 import fs from "fs";
-
-const DATA_DIR = path.join(process.cwd(), "data");
-const MAIN_DB_PATH = path.join(DATA_DIR, "main.db");
+import { getDataDir } from "./dataPath";
 
 function ensureDataDirs() {
   for (const dir of ["chats", "media", "backups"]) {
-    fs.mkdirSync(path.join(DATA_DIR, dir), { recursive: true });
+    fs.mkdirSync(path.join(getDataDir(), dir), { recursive: true });
   }
 }
 
 export function getMainDb(): Database.Database {
   ensureDataDirs();
-  const db = new Database(MAIN_DB_PATH);
+  const db = new Database(path.join(getDataDir(), "main.db"));
   db.pragma("journal_mode = WAL");
   db.exec(`
     CREATE TABLE IF NOT EXISTS chats (
@@ -46,7 +44,7 @@ export function getMainDb(): Database.Database {
 
 export function getChatDb(chatId: string): Database.Database {
   ensureDataDirs();
-  const dbPath = path.join(DATA_DIR, "chats", `${chatId}.db`);
+  const dbPath = path.join(getDataDir(), "chats", `${chatId}.db`);
   const db = new Database(dbPath);
   db.pragma("journal_mode = WAL");
   db.exec(`
@@ -71,7 +69,7 @@ export function getChatDb(chatId: string): Database.Database {
 }
 
 export function deleteChatDb(chatId: string) {
-  const dbPath = path.join(DATA_DIR, "chats", `${chatId}.db`);
+  const dbPath = path.join(getDataDir(), "chats", `${chatId}.db`);
   if (fs.existsSync(dbPath)) fs.unlinkSync(dbPath);
   const walPath = dbPath + "-wal";
   if (fs.existsSync(walPath)) fs.unlinkSync(walPath);
